@@ -65,36 +65,39 @@ class ZeroMQServer(ServerBase):
         """Runs the ZeroMQ server."""
 
         while True:
-            error = None
+            self.serve_once()
+        
+    def serve_once(self):
+        error = None
 
-            initial_ctx = ZmqMethodContext(self)
-            initial_ctx.in_string = [self.zmq_socket.recv()]
+        initial_ctx = ZmqMethodContext(self)
+        initial_ctx.in_string = [self.zmq_socket.recv()]
 
-            contexts = self.generate_contexts(initial_ctx)
-            p_ctx, others = contexts[0], contexts[1:]
+        contexts = self.generate_contexts(initial_ctx)
+        p_ctx, others = contexts[0], contexts[1:]
+        if p_ctx.in_error:
+            p_ctx.out_object = p_ctx.in_error
+            error = p_ctx.in_error
+
+        else:
+            self.get_in_object(p_ctx)
+
             if p_ctx.in_error:
                 p_ctx.out_object = p_ctx.in_error
                 error = p_ctx.in_error
-
             else:
-                self.get_in_object(p_ctx)
+                self.get_out_object(p_ctx)
+                if p_ctx.out_error:
+                    p_ctx.out_object = p_ctx.out_error
+                    error = p_ctx.out_error
 
-                if p_ctx.in_error:
-                    p_ctx.out_object = p_ctx.in_error
-                    error = p_ctx.in_error
-                else:
-                    self.get_out_object(p_ctx)
-                    if p_ctx.out_error:
-                        p_ctx.out_object = p_ctx.out_error
-                        error = p_ctx.out_error
+        self.get_out_string(p_ctx)
 
-            self.get_out_string(p_ctx)
+        process_contexts(self, others, error)
 
-            process_contexts(self, others, error)
+        self.zmq_socket.send(''.join(p_ctx.out_string))
 
-            self.zmq_socket.send(b''.join(p_ctx.out_string))
-
-            p_ctx.close()
+        p_ctx.close()
 
 
 class ZeroMQThreadPoolServer(object):
